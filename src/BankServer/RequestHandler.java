@@ -1,82 +1,158 @@
 package BankServer;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.FileWriter;
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
 import java.net.Socket;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+import Bank.BankMessage;
+import Bank.SensitiveAccount;
 import bankExceptions.*;
 
 public class RequestHandler extends Thread {
-    private Socket client;
+    private final Socket client;
+    private final ObjectOutputStream out;
+    private BankMessage msg;
+    private final AtomicInteger counterOwner;
+    private final AtomicInteger counterDest;
 
-    public RequestHandler(Socket client) {
+    private static final Lock sharedLock = new ReentrantLock();
+
+    public RequestHandler(Socket client, ObjectOutputStream out, BankMessage message, AtomicInteger counterOwner, AtomicInteger counterDest) {
         this.client = client;
+        this.out = out;
+        this.msg = message;
+        this.counterOwner = counterOwner;
+        this.counterDest = counterDest;
     }
 
-    private void writeFile(String fileName, String written) throws IOException {
-        FileWriter file = new FileWriter("User Data/" + fileName);
-
-        file.write(written);
-
-        file.close();
-    }
-
-    private String readFile(String fileName) throws IOException {
-        FileReader file = new FileReader("User Data/" + fileName);
-        StringBuilder str = new StringBuilder();
-
-        // Copying the whole file to str
-        char c = (char)file.read();
-        while (c != (char)-1) {
-            str.append(c);
-            c = (char)file.read();
+    private SensitiveAccount createAccount()  throws NoArgumentMatchException, IOException {
+        if (msg.getOwnedPass() == null) {
+            throw new NoArgumentMatchException();
         }
 
-        file.close();
+        return new SensitiveAccount(msg.getOwnedPass());
+    }
 
-        return str.toString();
+    private SensitiveAccount login() throws NoArgumentMatchException, AccountDoesNotExistException, IOException, WrongPasswordException {
+        if (msg.getDest() == null || msg.getOwnedPass() == null) {
+            throw new NoArgumentMatchException();
+        }
+
+        return new SensitiveAccount(msg.getDest().getId(), msg.getDest().getAgency(), msg.getOwnedPass());
+    }
+
+    private void deposit() throws NoArgumentMatchException, IOException {
+        if (msg.getOwned() == null || msg.getAmount() == null) {
+            throw new NoArgumentMatchException();
+        }
+
+        msg.getOwned().deposit(msg.getAmount());
+    }
+
+    private void withdraw() throws NoArgumentMatchException, NotEnoughBalanceException, IOException {
+        if (msg.getOwned() == null || msg.getAmount() == null) {
+            throw new NoArgumentMatchException();
+        }
+
+        msg.getOwned().withdraw(msg.getAmount());
+    }
+
+    private void transfer() throws NoArgumentMatchException, AccountDoesNotExistException, NotEnoughBalanceException, IOException {
+        if (msg.getOwned() == null || msg.getDest() == null || msg.getAmount() == null) {
+            throw new NoArgumentMatchException();
+        }
+
+        msg.getOwned().transfer((SensitiveAccount)msg.getDest(), msg.getAmount());
     }
 
     public void run() {
         try {
-            DataInputStream in = new DataInputStream(client.getInputStream());
-            DataOutputStream out = new DataOutputStream(client.getOutputStream());
-
             try {
-                String[] args = in.readUTF().split(";");
-
-                if (args[0].equals("CreateAccount")) {
-                    if (args.length != 3) {
-                        throw new NoArgumentMatchException();
+                BankMessage response = null;
+                switch (msg.getMessage()) {
+                    case "CreateAccount": {
+                        response = new BankMessage("Success", createAccount(), msg.getOwnedPass(), msg.getAmount(), msg.getDest(), msg.getExpt());
+                        break;
                     }
-
-                    String accountName = args[1];
-                    String accountPass = args[2];
-
-                    writeFile(accountName, accountName + "\n" + accountPass);
-
-                } else {
-                    throw new NoCommandException();
+                    case "Login": {
+                        if (msg.getDest() != null) {
+                            synchronized (msg.getDest()) {
+                                response = new BankMessage("Success", login(), msg.getOwnedPass(), msg.getAmount(), msg.getDest(), msg.getExpt());
+                            }
+                        }
+                        else {
+                            throw new NoArgumentMatchException();
+                        }
+                        break;
+                    }
+                    case "Deposit": {
+                        if (msg.getOwned() != null) {
+                            synchronized (msg.getOwned()) {
+                                deposit();
+                                response = new BankMessage("Success", msg.getOwned(), msg.getOwnedPass(), msg.getAmount(), msg.getDest(), null);
+                            }
+                        }
+                        else {
+                            throw new NoArgumentMatchException();
+                        }
+                        break;
+                    }
+                    case "Withdraw": {
+                        if (msg.getOwned() != null) {
+                            synchronized (msg.getOwned()) {
+                                withdraw();
+                                response = new BankMessage("Success", msg.getOwned(), msg.getOwnedPass(), msg.getAmount(), msg.getDest(), null);
+                            }
+                        }
+                        else {
+                            throw new NoArgumentMatchException();
+                        }
+                        break;
+                    }
+                    case "Transfer": {
+                        if (msg.getOwned() != null && msg.getDest() != null) {
+                            sharedLock.lock();
+                            synchronized (msg.getOwned()) {
+                                synchronized (msg.getDest()) {
+                                    sharedLock.unlock();
+                                    transfer();
+                                    response = new BankMessage("Success", msg.getOwned(), msg.getOwnedPass(), msg.getAmount(), msg.getDest(), null);
+                                }
+                            }
+                        }
+                        else {
+                            throw new NoArgumentMatchException();
+                        }
+                        break;
+                    }
                 }
 
-                out.writeUTF("0");
+                if (response != null) {
+                    out.writeObject(response);
+                }
+                else {
+                    throw new RuntimeException(new NullPointerException().toString() + " (This should be impossible, contact your developer)");
+                }
             }
-            catch (BankException e){
-                out.writeUTF(e.toString());
-            }
-            catch (Exception e){
-                System.out.println("free exception");
+            catch (Exception e) {
+                out.writeObject(new BankMessage("Exception", msg.getOwned(), msg.getOwnedPass(), msg.getAmount(), msg.getDest(), e));
             }
             finally {
-                    out.close();
-                    in.close();
-                    client.close();
+                out.flush();
+                out.close();
             }
-        }
-        catch (IOException e){
+        } catch (IOException e) {
             System.out.println("IO ERROR");
+        } finally {
+            try {
+                client.close();
+            } catch (IOException e) {}
+            if (counterOwner != null)
+                counterOwner.decrementAndGet();
+            if (counterDest != null)
+                counterDest.decrementAndGet();
         }
     }
 }
