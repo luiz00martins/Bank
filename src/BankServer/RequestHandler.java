@@ -13,14 +13,16 @@ import bankExceptions.*;
 public class RequestHandler extends Thread {
     private final Socket client;
     private final ObjectOutputStream out;
+    private final ObjectInputStream in;
     private BankMessage msg;
     private final AtomicInteger counterOwner;
     private final AtomicInteger counterDest;
 
     private static final Lock sharedLock = new ReentrantLock();
 
-    public RequestHandler(Socket client, ObjectOutputStream out, BankMessage message, AtomicInteger counterOwner, AtomicInteger counterDest) {
+    public RequestHandler(Socket client, ObjectInputStream in, ObjectOutputStream out, BankMessage message, AtomicInteger counterOwner, AtomicInteger counterDest) {
         this.client = client;
+        this.in = in;
         this.out = out;
         this.msg = message;
         this.counterOwner = counterOwner;
@@ -67,6 +69,14 @@ public class RequestHandler extends Thread {
         msg.getOwned().transfer((SensitiveAccount)msg.getDest(), msg.getAmount());
     }
 
+    private void update() throws NoArgumentMatchException, AccountDoesNotExistException, IOException, WrongPasswordException {
+        if (msg.getOwned() == null) {
+            throw new NoArgumentMatchException();
+        }
+
+        msg.getOwned().update();
+    }
+
     public void run() {
         try {
             try {
@@ -79,7 +89,7 @@ public class RequestHandler extends Thread {
                     case "Login": {
                         if (msg.getDest() != null) {
                             synchronized (msg.getDest()) {
-                                response = new BankMessage("Success", login(), msg.getOwnedPass(), msg.getAmount(), msg.getDest(), msg.getExpt());
+                                response = new BankMessage("Success", login(), null, msg.getAmount(), msg.getDest(), msg.getExpt());
                             }
                         }
                         else {
@@ -90,6 +100,7 @@ public class RequestHandler extends Thread {
                     case "Deposit": {
                         if (msg.getOwned() != null) {
                             synchronized (msg.getOwned()) {
+                                msg.getOwned().update();
                                 deposit();
                                 response = new BankMessage("Success", msg.getOwned(), msg.getOwnedPass(), msg.getAmount(), msg.getDest(), null);
                             }
@@ -102,6 +113,7 @@ public class RequestHandler extends Thread {
                     case "Withdraw": {
                         if (msg.getOwned() != null) {
                             synchronized (msg.getOwned()) {
+                                msg.getOwned().update();
                                 withdraw();
                                 response = new BankMessage("Success", msg.getOwned(), msg.getOwnedPass(), msg.getAmount(), msg.getDest(), null);
                             }
@@ -117,9 +129,24 @@ public class RequestHandler extends Thread {
                             synchronized (msg.getOwned()) {
                                 synchronized (msg.getDest()) {
                                     sharedLock.unlock();
+
+                                    msg.getOwned().update();
+                                    ((SensitiveAccount)msg.getDest()).update();
                                     transfer();
                                     response = new BankMessage("Success", msg.getOwned(), msg.getOwnedPass(), msg.getAmount(), msg.getDest(), null);
                                 }
+                            }
+                        }
+                        else {
+                            throw new NoArgumentMatchException();
+                        }
+                        break;
+                    }
+                    case "Update": {
+                        if (msg.getOwned() != null) {
+                            synchronized (msg.getOwned()) {
+                                update();
+                                response = new BankMessage("Success", msg.getOwned(), msg.getOwnedPass(), msg.getAmount(), msg.getDest(), null);
                             }
                         }
                         else {
@@ -142,6 +169,7 @@ public class RequestHandler extends Thread {
             finally {
                 out.flush();
                 out.close();
+                in.close();
             }
         } catch (IOException e) {
             System.out.println("IO ERROR");

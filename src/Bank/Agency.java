@@ -26,4 +26,8 @@ public class Agency implements Serializable {
     public String toString(){
         return agency;
     }
+
+    public boolean equals(Agency comp) {
+        return agency.equals(comp.agency);
+    }
 }

@@ -3,7 +3,7 @@ package Bank;
 import java.io.Serializable;
 
 public class Password implements Serializable {
-    private String Password;
+    private String password;
 
     public Password(String str) {
         // Checking format
@@ -16,10 +16,14 @@ public class Password implements Serializable {
                 throw new IllegalArgumentException("Only digits are accepted in ID");
         }
 
-        Password = str;
+        password = str;
     }
 
     public String toString(){
-        return Password;
+        return password;
+    }
+
+    public boolean equals(Password comp) {
+        return password.equals(comp.password);
     }
 }

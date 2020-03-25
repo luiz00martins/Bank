@@ -61,7 +61,7 @@ public class Balance implements Serializable {
     }
 
     public synchronized void sub(int dollars, int cents) throws NotEnoughBalanceException {
-        if (this.dollars > dollars || (this.dollars == cents && this.cents >= cents)) {
+        if (this.dollars > dollars || (this.dollars == dollars && this.cents >= cents)) {
             this.dollars -= dollars;
             this.cents -= cents;
 

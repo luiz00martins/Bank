@@ -76,23 +76,39 @@ public class Main {
         return t.getResponse().getOwned();
     }
 
+    public static SensitiveAccount tryUpdate(SensitiveAccount accSend) throws Exception {
+        ClientThread t = new ClientThread().update(accSend);
+        t.start();
+        t.join();
+
+        // Checking if it logged in successfully
+        testException(t.getResponse());
+
+        // If yes, getting logged account
+        return t.getResponse().getOwned();
+    }
+
     public static void main(String[] args) {
-        SensitiveAccount acc = null;
-
+        SensitiveAccount acc0 = null;
+        SensitiveAccount acc1 = null;
+        ClientThread t = null;
+        int i = 0;
         try{
-            acc = tryLogin(new ID("90619-6"), new Agency("2655-1"), new Password("4321"));
+            acc0 = tryLogin(new ID("90619-6"), new Agency("2655-1"), new Password("4321"));
+            acc1 = tryLogin(new ID("30596-7"), new Agency("0187-8"), new Password("1234"));
 
-            acc = tryTransfer(acc, new Account(new ID("30596-7"), new Agency("0187-8")), new Balance(100, 0));
+            for (i = 0; i < 50; i++) {
+                t = new ClientThread().transfer(acc1, acc0, new Balance(100, 0));
+                t.start();
 
-
-
-
-            acc = tryCreateAccount(new Password("4321"));
-            acc = tryDeposit(acc, new Balance(400, 25));
+                t = new ClientThread().transfer(acc0, acc1, new Balance(100, 0));
+                t.start();
+            }
 
         }
         catch (Exception e) {
-            System.out.println(e.toString());
+            for (StackTraceElement el : e.getStackTrace())
+            System.out.println(el.toString());
         }
 
 

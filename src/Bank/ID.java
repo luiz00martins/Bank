@@ -26,4 +26,8 @@ public class ID implements Serializable {
     public String toString(){
         return id;
     }
+
+    public boolean equals(ID comp) {
+        return id.equals(comp.id);
+    }
 }

@@ -45,6 +45,8 @@ public class SensitiveAccount extends Account {
             c = (char)file.read();
         }
 
+        file.close();
+
         String[] data = str.toString().split("\n");
 
         if (!data[2].equals(pass.toString())) {
@@ -56,8 +58,6 @@ public class SensitiveAccount extends Account {
         this.agency = new Agency(data[1]);
         this.password = new Password(data[2]);
         this.balance = new Balance(data[3]);
-
-        file.close();
     }
 
     public synchronized void deposit(Balance amount) throws IOException {
@@ -172,6 +172,36 @@ public class SensitiveAccount extends Account {
         catch (WrongPasswordException e) {
             throw new RuntimeException(e.toString() + " (This should be impossible, contact your developer)");
         }
+    }
+
+    public void update() throws AccountDoesNotExistException, IOException, WrongPasswordException {
+        FileReader file;
+        try {
+            file = new FileReader("User Data/" + id + " " + agency);
+        }
+        catch (IOException e) {
+            throw new AccountDoesNotExistException();
+        }
+
+        StringBuilder str = new StringBuilder();
+
+        // Copying the whole file to str
+        char c = (char)file.read();
+        while (c != (char)-1) {
+            str.append(c);
+            c = (char)file.read();
+        }
+
+        file.close();
+
+        String[] data = str.toString().split("\n");
+
+        if (!data[2].equals(password.toString())) {
+            file.close();
+            throw new WrongPasswordException();
+        }
+
+        this.balance = new Balance(data[3]);
     }
 
     public Balance getBalance() {

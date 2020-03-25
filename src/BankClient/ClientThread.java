@@ -40,6 +40,11 @@ public class ClientThread extends Thread  {
         return this;
     }
 
+    public ClientThread update(SensitiveAccount acc){
+        msg = new BankMessage("Update", acc, null, null, null, null);
+        return this;
+    }
+
     public void run() {
         if (!msg.getMessage().equals("")){
             try {

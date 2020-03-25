@@ -14,6 +14,7 @@ import Bank.Account;
 import Bank.BankMessage;
 import Bank.SensitiveAccount;
 import bankExceptions.AccountDoesNotExistException;
+import bankExceptions.WrongPasswordException;
 
 public class Main {
     private static ServerSocket serverSocket;
@@ -68,11 +69,13 @@ public class Main {
                     // Reading request
                     BankMessage msg = (BankMessage)in.readObject();
 
+                    removeClosed();
+
                     // Trying to verify account
                     try {
-                        if (msg.getDest() != null) {
-                            msg = new BankMessage(msg.getMessage(), msg.getOwned(), msg.getOwnedPass(), msg.getAmount(), SensitiveAccount.load(msg.getDest()), msg.getExpt());
-                        }
+                        //if (msg.getDest() != null) {
+                        //    msg = new BankMessage(msg.getMessage(), msg.getOwned(), msg.getOwnedPass(), msg.getAmount(), SensitiveAccount.load(msg.getDest()), msg.getExpt());
+                        //}
 
                         // Adding accounts to queue
                         AtomicInteger counterOwned = null;
@@ -99,11 +102,11 @@ public class Main {
                         SensitiveAccount dest = null;
                         // Adding possible destination account to its queue
                         if (msg.getDest() != null) {
-                            dest = SensitiveAccount.load(msg.getDest());
                             // Try to see if the account is being used
                             int pos = findUsed(msg.getDest());
                             // If is not being used, add to the used accounts
                             if (pos == -1) {
+                                dest = SensitiveAccount.load(msg.getDest());
                                 beingUsed.add(dest);
                                 counterDest = new AtomicInteger(1);
                                 waitingQueues.add(counterDest);
@@ -117,13 +120,9 @@ public class Main {
                         }
 
                         BankMessage newMessage = new BankMessage(msg.getMessage(), owned, msg.getOwnedPass(), msg.getAmount(), dest, msg.getExpt());
-                        executorService.execute(new RequestHandler(client, out, newMessage, counterOwned, counterDest));
-
-                        removeClosed();
+                        executorService.execute(new RequestHandler(client, in, out, newMessage, counterOwned, counterDest));
                     } catch (AccountDoesNotExistException e) {
                         out.writeObject(new BankMessage("Exception", msg.getOwned(), msg.getOwnedPass(), msg.getAmount(), msg.getDest(), e));
-                        out.close();
-                        in.close();
                     }
                 }
                 catch (IOException e) {

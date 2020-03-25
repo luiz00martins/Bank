@@ -35,7 +35,9 @@ public class Account implements Serializable {
     }
 
     public boolean equals(Account acc) {
-        return (this.id.equals(acc.id) && this.agency.equals(acc.agency));
+        boolean one = this.id.equals(acc.id);
+        boolean two = this.agency.equals(acc.agency);
+        return (one && two);
     }
 
 }
